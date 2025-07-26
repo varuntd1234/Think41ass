@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import './ChatWindow.css';
 import MessageList from './MessageList';
 import UserInput from './UserInput';
 import ConversationHistoryPanel from './ConversationHistoryPanel';
 import { useChat } from '../context/ChatContext';
+import apiService from '../services/api';
 
 const ChatWindow = () => {
   const { state, actions } = useChat();
@@ -16,12 +17,29 @@ const ChatWindow = () => {
     showHistoryPanel 
   } = state;
 
+  const [connectionStatus, setConnectionStatus] = useState('checking');
+
+  // Check backend connection on component mount
+  useEffect(() => {
+    checkBackendConnection();
+  }, []);
+
   // Initialize with welcome message
   useEffect(() => {
     if (messages.length === 0) {
       actions.resetState();
     }
   }, []);
+
+  const checkBackendConnection = async () => {
+    try {
+      await apiService.healthCheck();
+      setConnectionStatus('connected');
+    } catch (error) {
+      console.error('Backend connection failed:', error);
+      setConnectionStatus('disconnected');
+    }
+  };
 
   const handleSendMessage = async (message) => {
     if (!message.trim()) return;
@@ -39,53 +57,49 @@ const ChatWindow = () => {
     actions.setLoading(true);
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: message,
-          conversation_id: conversationId
-        })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Add AI response to the list
-        const aiMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data.ai_response,
-          timestamp: data.timestamp
-        };
-
-        actions.addMessage(aiMessage);
-        
-        // Update conversation ID if this is a new conversation
-        if (!conversationId && data.conversation_id) {
-          actions.setConversationId(data.conversation_id);
-        }
-      } else {
-        // Handle error
-        const errorMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: 'Sorry, I encountered an error. Please try again.',
-          timestamp: new Date().toISOString()
-        };
-        actions.addMessage(errorMessage);
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      const errorMessage = {
+      // Use API service to send message
+      const response = await apiService.sendMessage(message, conversationId);
+      
+      // Add AI response to the list
+      const aiMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: response.ai_response || response.message,
+        timestamp: response.timestamp || new Date().toISOString()
+      };
+
+      actions.addMessage(aiMessage);
+      
+      // Update conversation ID if this is a new conversation
+      if (!conversationId && response.conversation_id) {
+        actions.setConversationId(response.conversation_id);
+      }
+
+      // Update connection status on successful request
+      setConnectionStatus('connected');
+      
+    } catch (error) {
+      console.error('Error sending message:', error);
+      
+      // Handle different types of errors
+      let errorMessage = 'Sorry, I encountered an error. Please try again.';
+      
+      if (error.message.includes('Failed to fetch')) {
+        errorMessage = 'Unable to connect to the server. Please check your connection.';
+        setConnectionStatus('disconnected');
+      } else if (error.message.includes('500')) {
+        errorMessage = 'Server error. Please try again later.';
+      } else if (error.message.includes('400')) {
+        errorMessage = 'Invalid request. Please check your message.';
+      }
+
+      const errorResponse = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: errorMessage,
         timestamp: new Date().toISOString()
       };
-      actions.addMessage(errorMessage);
+      actions.addMessage(errorResponse);
     } finally {
       actions.setLoading(false);
     }
@@ -93,16 +107,24 @@ const ChatWindow = () => {
 
   const handleLoadConversation = async (conversationId) => {
     try {
-      const response = await fetch(`/api/conversations/${conversationId}`);
-      const data = await response.json();
-
-      if (response.ok) {
-        actions.setMessages(data.messages);
+      const response = await apiService.getConversation(conversationId);
+      
+      if (response.messages) {
+        actions.setMessages(response.messages);
         actions.setConversationId(conversationId);
         actions.setHistoryPanel(false);
+        setConnectionStatus('connected');
       }
     } catch (error) {
       console.error('Error loading conversation:', error);
+      
+      const errorMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Unable to load conversation. Please try again.',
+        timestamp: new Date().toISOString()
+      };
+      actions.addMessage(errorMessage);
     }
   };
 
@@ -110,6 +132,28 @@ const ChatWindow = () => {
     actions.resetState();
     actions.setConversationId(null);
     actions.setHistoryPanel(false);
+  };
+
+  const getConnectionStatusColor = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return '#28a745';
+      case 'disconnected':
+        return '#dc3545';
+      default:
+        return '#ffc107';
+    }
+  };
+
+  const getConnectionStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'Connected';
+      case 'disconnected':
+        return 'Disconnected';
+      default:
+        return 'Checking...';
+    }
   };
 
   return (
@@ -121,6 +165,10 @@ const ChatWindow = () => {
             <h1>Conversational AI</h1>
           </div>
           <div className="header-actions">
+            <div className="connection-status" style={{ color: getConnectionStatusColor() }}>
+              <span className="status-dot" style={{ backgroundColor: getConnectionStatusColor() }}></span>
+              {getConnectionStatusText()}
+            </div>
             <button 
               className="history-toggle"
               onClick={() => actions.setHistoryPanel(!showHistoryPanel)}
@@ -151,10 +199,9 @@ const ChatWindow = () => {
             loading={loading}
           />
           <UserInput 
-            value={userInput}
-            onChange={actions.setUserInput}
             onSend={handleSendMessage}
             loading={loading}
+            disabled={connectionStatus === 'disconnected'}
           />
         </div>
       </div>
