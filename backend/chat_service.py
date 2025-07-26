@@ -1,13 +1,16 @@
 from models import db, Conversation, Message, Product, Order, OrderItem, InventoryItem, UserData
 from sqlalchemy import func, and_
+from llm_service import LLMService
 import re
 from datetime import datetime
 
 class ChatService:
     """Service class for handling chat functionality and business logic"""
     
-    @staticmethod
-    def process_chat_message(user_message, conversation_id=None, user_id=None):
+    def __init__(self):
+        self.llm_service = LLMService()
+    
+    def process_chat_message(self, user_message, conversation_id=None, user_id=None):
         """
         Process a user message and return AI response
         """
@@ -25,6 +28,15 @@ class ChatService:
             else:
                 return {"error": "Either conversation_id or user_id is required"}, 400
             
+            # Get conversation history for context
+            conversation_history = []
+            if conversation.messages:
+                for msg in conversation.messages[-10:]:  # Last 10 messages
+                    conversation_history.append({
+                        'role': msg.role,
+                        'content': msg.content
+                    })
+            
             # Save user message
             user_msg = Message(
                 conversation_id=conversation_id,
@@ -33,8 +45,22 @@ class ChatService:
             )
             db.session.add(user_msg)
             
-            # Generate AI response
-            ai_response = ChatService._generate_response(user_message)
+            # Check if we need more information
+            missing_info = self._check_missing_information(user_message)
+            
+            if missing_info:
+                # Ask clarifying question
+                ai_response = self.llm_service.ask_clarifying_question(user_message, missing_info)
+            else:
+                # Get database context for the query
+                context = self._get_database_context(user_message)
+                
+                # Generate AI response with LLM
+                ai_response = self.llm_service.generate_response(
+                    user_message=user_message,
+                    conversation_history=conversation_history,
+                    context=context
+                )
             
             # Save AI response
             ai_msg = Message(
@@ -56,31 +82,94 @@ class ChatService:
             db.session.rollback()
             return {"error": str(e)}, 500
     
-    @staticmethod
-    def _generate_response(user_message):
+    def _check_missing_information(self, user_message):
         """
-        Generate AI response based on user message
+        Check if the user message is missing required information
+        """
+        message_lower = user_message.lower()
+        
+        # Check for order status queries without order ID
+        if any(word in message_lower for word in ['order', 'status', 'track']) and not re.search(r'\d+', user_message):
+            return "order ID"
+        
+        # Check for inventory queries without product name
+        if any(word in message_lower for word in ['stock', 'inventory', 'available', 'left']) and not any(word in message_lower for word in ['product', 'item', 't-shirt', 'shirt', 'pants', 'dress']):
+            return "product name"
+        
+        return None
+    
+    def _get_database_context(self, user_message):
+        """
+        Get relevant database context for the user query
+        """
+        message_lower = user_message.lower()
+        context_parts = []
+        
+        try:
+            # Get top products context
+            if any(word in message_lower for word in ['top', 'best', 'most sold', 'popular']):
+                top_products = db.session.query(
+                    Product.name,
+                    Product.brand,
+                    func.count(OrderItem.id).label('sales_count')
+                ).join(OrderItem, Product.id == OrderItem.product_id)\
+                 .group_by(Product.name, Product.brand)\
+                 .order_by(func.count(OrderItem.id).desc())\
+                 .limit(3).all()
+                
+                if top_products:
+                    context_parts.append("Top selling products: " + ", ".join([f"{p.name} ({p.brand}) - {p.sales_count} sold" for p in top_products]))
+            
+            # Get product categories context
+            if 'product' in message_lower or 'category' in message_lower:
+                categories = db.session.query(
+                    Product.category,
+                    func.count(Product.id).label('count')
+                ).filter(Product.category.isnot(None))\
+                 .group_by(Product.category)\
+                 .order_by(func.count(Product.id).desc())\
+                 .limit(5).all()
+                
+                if categories:
+                    context_parts.append("Product categories: " + ", ".join([f"{c.category} ({c.count} products)" for c in categories]))
+            
+            # Get inventory context
+            if any(word in message_lower for word in ['stock', 'inventory', 'available']):
+                total_products = Product.query.count()
+                total_inventory = InventoryItem.query.count()
+                available_inventory = InventoryItem.query.filter(InventoryItem.sold_at.is_(None)).count()
+                
+                context_parts.append(f"Inventory summary: {total_products} products, {total_inventory} total items, {available_inventory} available")
+            
+            return "; ".join(context_parts) if context_parts else None
+            
+        except Exception as e:
+            print(f"Error getting database context: {str(e)}")
+            return None
+    
+    def _generate_response(self, user_message):
+        """
+        Generate AI response based on user message (fallback method)
         """
         message_lower = user_message.lower()
         
         # Check for different types of queries
         if any(word in message_lower for word in ['top', 'best', 'most sold', 'popular']):
-            return ChatService._handle_top_products_query(message_lower)
+            return self._handle_top_products_query(message_lower)
         
         elif any(word in message_lower for word in ['order', 'status', 'track']):
-            return ChatService._handle_order_status_query(message_lower)
+            return self._handle_order_status_query(message_lower)
         
         elif any(word in message_lower for word in ['stock', 'inventory', 'available', 'left']):
-            return ChatService._handle_inventory_query(message_lower)
+            return self._handle_inventory_query(message_lower)
         
         elif any(word in message_lower for word in ['product', 'item', 'catalog']):
-            return ChatService._handle_product_query(message_lower)
+            return self._handle_product_query(message_lower)
         
         else:
-            return ChatService._handle_general_query(message_lower)
+            return self._handle_general_query(message_lower)
     
-    @staticmethod
-    def _handle_top_products_query(message):
+    def _handle_top_products_query(self, message):
         """Handle queries about top selling products"""
         try:
             # Query to get top selling products
@@ -106,8 +195,7 @@ class ChatService:
         except Exception as e:
             return f"Sorry, I encountered an error while retrieving top products: {str(e)}"
     
-    @staticmethod
-    def _handle_order_status_query(message):
+    def _handle_order_status_query(self, message):
         """Handle queries about order status"""
         try:
             # Extract order ID from message
@@ -142,8 +230,7 @@ class ChatService:
         except Exception as e:
             return f"Sorry, I encountered an error while retrieving order status: {str(e)}"
     
-    @staticmethod
-    def _handle_inventory_query(message):
+    def _handle_inventory_query(self, message):
         """Handle queries about inventory/stock levels"""
         try:
             # Extract product name from message
@@ -195,8 +282,7 @@ class ChatService:
         except Exception as e:
             return f"Sorry, I encountered an error while retrieving inventory information: {str(e)}"
     
-    @staticmethod
-    def _handle_product_query(message):
+    def _handle_product_query(self, message):
         """Handle general product information queries"""
         try:
             # Get product statistics
@@ -235,8 +321,7 @@ class ChatService:
         except Exception as e:
             return f"Sorry, I encountered an error while retrieving product information: {str(e)}"
     
-    @staticmethod
-    def _handle_general_query(message):
+    def _handle_general_query(self, message):
         """Handle general queries and provide help"""
         return """I'm your customer support assistant! I can help you with:
 

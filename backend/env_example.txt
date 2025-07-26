@@ -1,0 +1,9 @@
+# Database Configuration
+DATABASE_URL=postgresql://localhost:5432/conversational_ai
+
+# Groq API Configuration
+GROQ_API_KEY=your_groq_api_key_here
+
+# Application Configuration
+SECRET_KEY=your-secret-key-here
+DEBUG=True 

@@ -17,6 +17,7 @@ def create_app():
     return app
 
 app = create_app()
+chat_service = ChatService()
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -49,7 +50,7 @@ def chat():
         user_id = data.get('user_id')
         
         # Process the chat message
-        result = ChatService.process_chat_message(
+        result = chat_service.process_chat_message(
             user_message=user_message,
             conversation_id=conversation_id,
             user_id=user_id
