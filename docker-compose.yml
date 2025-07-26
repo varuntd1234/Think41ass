@@ -1,20 +1,97 @@
 version: '3.8'
 
 services:
-  chatbot-app:
-    build: .
-    ports:
-      - "5000:5000"  # Backend API
-      - "8000:8000"  # Frontend
-    volumes:
-      - ./ecommerce-dataset:/app/ecommerce-dataset
+  # PostgreSQL Database
+  postgres:
+    image: postgres:13-alpine
+    container_name: conversational-ai-db
     environment:
+      POSTGRES_DB: conversational_ai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d conversational_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-network
+
+  # Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: conversational-ai-backend
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/conversational_ai
+      - GROQ_API_KEY=${GROQ_API_KEY:-your_groq_api_key_here}
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      - DEBUG=False
       - FLASK_ENV=production
-      - FLASK_APP=backend/app.py
-    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./ecommerce-dataset:/app/ecommerce-dataset:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s 
+      start_period: 40s
+    networks:
+      - ai-network
+    restart: unless-stopped
+
+  # Frontend Service
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: conversational-ai-frontend
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ai-network
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: conversational-ai-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - ai-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  ai-network:
+    driver: bridge 

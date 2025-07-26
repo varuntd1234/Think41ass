@@ -1,233 +1,403 @@
-# Customer Support Chatbot for E-commerce Clothing Site
+# Conversational AI Full-Stack Application
 
-A complete customer support chatbot solution with backend API and modern frontend interface, designed to handle e-commerce queries using real dataset analysis.
+A complete full-stack application featuring a conversational AI chatbot with React frontend, Flask backend, PostgreSQL database, and LLM integration using Groq API.
 
 ## 🚀 Features
 
-### Backend API
-- **Flask REST API** with CORS support
-- **Data Processing** using pandas for CSV analysis
-- **Query Processing** for:
-  - Top selling products
-  - Order status tracking
-  - Inventory management
-  - Product information
+### **Backend (Flask + PostgreSQL)**
+- **RESTful API**: Complete chat API with conversation management
+- **Database Integration**: PostgreSQL with SQLAlchemy ORM
+- **LLM Integration**: Groq API for intelligent responses
+- **Data Processing**: E-commerce dataset integration
+- **Health Checks**: Comprehensive monitoring endpoints
 
-### Frontend UI
-- **Modern Chat Interface** with responsive design
-- **Real-time Communication** with backend API
-- **Quick Suggestion Buttons** for common queries
-- **Connection Status Indicators**
-- **Mobile Responsive** design
+### **Frontend (React)**
+- **Modern UI**: Responsive chat interface with real-time messaging
+- **State Management**: React Context API with useReducer
+- **Conversation History**: Side panel for past conversations
+- **Connection Status**: Real-time backend connectivity monitoring
+- **Error Handling**: Graceful error management and user feedback
 
-### Data Analysis
-- **E-commerce Dataset** with 6 CSV files
-- **Product Analytics** and sales tracking
-- **Inventory Management** and stock levels
-- **Order Processing** and status tracking
+### **Docker & Deployment**
+- **Containerized**: Complete Docker setup for all services
+- **Orchestration**: Docker Compose for easy deployment
+- **Reverse Proxy**: Nginx configuration for production
+- **Health Monitoring**: Built-in health checks for all services
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │    Backend      │    │   Database      │
+│   (React)       │◄──►│   (Flask)       │◄──►│  (PostgreSQL)   │
+│   Port: 3000    │    │   Port: 5000    │    │   Port: 5432    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+                    ┌─────────────────┐
+                    │   Nginx Proxy   │
+                    │   Port: 80      │
+                    └─────────────────┘
+```
 
 ## 📋 Prerequisites
 
-- Python 3.9+
-- Docker and Docker Compose (for containerized deployment)
-- Modern web browser
+- **Docker**: Version 20.10 or higher
+- **Docker Compose**: Version 2.0 or higher
+- **Git**: For cloning the repository
+- **Groq API Key**: For LLM functionality (optional for demo)
 
-## 🛠️ Installation & Setup
+## 🚀 Quick Start
 
-### Option 1: Docker Deployment (Recommended)
+### **1. Clone the Repository**
+```bash
+git clone https://github.com/varuntd1234/Think41ass.git
+cd Think41ass
+```
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/varuntd1234/Think41ass.git
-   cd Think41ass
-   ```
+### **2. Set Environment Variables**
+Create a `.env` file in the root directory:
+```bash
+# Groq API Configuration (optional)
+GROQ_API_KEY=your_groq_api_key_here
 
-2. **Build and run with Docker Compose:**
-   ```bash
-   docker-compose up --build
-   ```
+# Application Configuration
+SECRET_KEY=your-secret-key-here
 
-3. **Access the application:**
-   - Frontend: http://localhost:8000
-   - Backend API: http://localhost:5000
+# Database Configuration (defaults provided in docker-compose)
+DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/conversational_ai
+```
 
-### Option 2: Local Development
+### **3. Start the Application**
+```bash
+# Build and start all services
+docker-compose up --build
 
-1. **Setup Backend:**
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   python app.py
-   ```
+# Or run in detached mode
+docker-compose up -d --build
+```
 
-2. **Setup Frontend:**
-   ```bash
-   cd frontend
-   # Open index.html in a web browser
-   # Or use a local server:
-   python -m http.server 8000
-   ```
+### **4. Access the Application**
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:5000
+- **Nginx Proxy**: http://localhost:80
+- **Database**: localhost:5432
 
-## 🎯 Usage Examples
+## 🔧 Development Setup
 
-### Example Queries
+### **Local Development (Without Docker)**
 
-1. **Top Products:**
-   ```
-   "What are the top 5 most sold products?"
-   ```
+#### **Backend Setup**
+```bash
+# Navigate to backend directory
+cd backend
 
-2. **Order Status:**
-   ```
-   "Show me the status of order ID 12345"
-   ```
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-3. **Inventory Check:**
-   ```
-   "How many Classic T-Shirts are left in stock?"
-   ```
+# Install dependencies
+pip install -r requirements.txt
 
-4. **Product Information:**
-   ```
-   "Tell me about your products"
-   ```
+# Set environment variables
+export DATABASE_URL="postgresql://postgres:postgres123@localhost:5432/conversational_ai"
+export GROQ_API_KEY="your_groq_api_key_here"
 
-### Quick Start
+# Run the application
+python app.py
+```
 
-1. Open the frontend in your browser
-2. Click on suggestion buttons or type your question
-3. Get instant responses from the chatbot
+#### **Frontend Setup**
+```bash
+# Navigate to frontend directory
+cd frontend
 
-## 📊 Dataset Information
+# Install dependencies
+npm install
 
-The chatbot uses a comprehensive e-commerce dataset with:
+# Start development server
+npm start
+```
 
-- **Products**: Product catalog with categories, brands, and pricing
-- **Orders**: Customer order information and status
-- **Order Items**: Individual items within orders
-- **Inventory**: Stock levels and availability
-- **Users**: Customer information and demographics
-- **Distribution Centers**: Warehouse locations
+#### **Database Setup**
+```bash
+# Install PostgreSQL locally or use Docker
+docker run -d \
+  --name postgres-dev \
+  -e POSTGRES_DB=conversational_ai \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres123 \
+  -p 5432:5432 \
+  postgres:13-alpine
+```
 
-## 🔧 API Endpoints
-
-### Health Check
-- **GET** `/api/health`
-- Returns API status and dataset loading information
-
-### Chat Endpoint
-- **POST** `/api/chat`
-- Request: `{"message": "your question"}`
-- Response: `{"message": "bot response", "timestamp": "..."}`
-
-## 🏗️ Project Structure
+## 📁 Project Structure
 
 ```
 Think41ass/
-├── backend/
-│   ├── app.py              # Flask API application
-│   ├── requirements.txt    # Python dependencies
-│   └── README.md          # Backend documentation
-├── frontend/
-│   ├── index.html         # Main HTML file
-│   ├── styles.css         # CSS styling
-│   ├── script.js          # JavaScript functionality
-│   └── README.md          # Frontend documentation
-├── ecommerce-dataset/     # Dataset files
-├── Dockerfile             # Docker configuration
-├── docker-compose.yml     # Docker Compose setup
-└── README.md             # This file
+├── backend/                    # Flask Backend
+│   ├── app.py                 # Main Flask application
+│   ├── config.py              # Configuration settings
+│   ├── models.py              # SQLAlchemy models
+│   ├── chat_service.py        # Chat business logic
+│   ├── llm_service.py         # LLM integration
+│   ├── load_data.py           # Data ingestion script
+│   └── requirements.txt       # Python dependencies
+├── frontend/                   # React Frontend
+│   ├── public/
+│   ├── src/
+│   │   ├── components/        # React components
+│   │   ├── context/           # State management
+│   │   ├── services/          # API services
+│   │   └── ...
+│   └── package.json
+├── ecommerce-dataset/          # Sample dataset
+├── docker-compose.yml          # Docker orchestration
+├── Dockerfile.backend          # Backend container
+├── Dockerfile.frontend         # Frontend container
+├── nginx.conf                  # Nginx configuration
+├── init-db.sql                 # Database initialization
+└── README.md                   # This file
 ```
 
 ## 🐳 Docker Commands
 
-### Build and Run
+### **Basic Commands**
 ```bash
-# Build the image
-docker build -t chatbot-app .
+# Start all services
+docker-compose up
 
-# Run the container
-docker run -p 5000:5000 -p 8000:8000 chatbot-app
+# Start in detached mode
+docker-compose up -d
 
-# Or use docker-compose
-docker-compose up --build
-```
-
-### Management
-```bash
-# Stop the application
+# Stop all services
 docker-compose down
 
 # View logs
-docker-compose logs -f
+docker-compose logs
 
-# Rebuild and restart
-docker-compose up --build --force-recreate
+# View logs for specific service
+docker-compose logs backend
+docker-compose logs frontend
+
+# Rebuild and start
+docker-compose up --build
+
+# Stop and remove volumes
+docker-compose down -v
 ```
+
+### **Service Management**
+```bash
+# Start specific service
+docker-compose up backend
+
+# Restart service
+docker-compose restart frontend
+
+# Scale services
+docker-compose up --scale backend=2
+
+# Check service status
+docker-compose ps
+```
+
+### **Development Commands**
+```bash
+# Run backend tests
+docker-compose exec backend python -m pytest
+
+# Access database
+docker-compose exec postgres psql -U postgres -d conversational_ai
+
+# View container resources
+docker stats
+```
+
+## 🔌 API Endpoints
+
+### **Health Check**
+- `GET /api/health` - Service health status
+
+### **Chat**
+- `POST /api/chat` - Send message and get AI response
+
+### **Users**
+- `POST /api/users` - Create new user
+
+### **Conversations**
+- `POST /api/conversations` - Create new conversation
+- `GET /api/conversations/<id>` - Get conversation with messages
+- `POST /api/conversations/<id>/messages` - Add message to conversation
+- `GET /api/users/<id>/conversations` - Get user's conversations
+
+### **Statistics**
+- `GET /api/stats` - Database statistics
 
 ## 🧪 Testing
 
-### Backend Testing
+### **Backend Testing**
 ```bash
-# Test health endpoint
-curl http://localhost:5000/api/health
+# Run backend tests
+cd backend
+python -m pytest
 
-# Test chat endpoint
-curl -X POST http://localhost:5000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "What are the top 5 most sold products?"}'
+# Run with coverage
+python -m pytest --cov=.
 ```
 
-### Frontend Testing
-1. Open http://localhost:8000 in your browser
-2. Try the suggestion buttons
-3. Test manual input with various queries
+### **Frontend Testing**
+```bash
+# Run frontend tests
+cd frontend
+npm test
 
-## 🔍 Troubleshooting
+# Run with coverage
+npm test -- --coverage
+```
 
-### Common Issues
+### **Integration Testing**
+```bash
+# Test API endpoints
+curl -X GET http://localhost:5000/api/health
 
-1. **Backend not starting:**
-   - Check if port 5000 is available
-   - Verify Python dependencies are installed
-   - Check dataset files are present
+# Test chat functionality
+curl -X POST http://localhost:5000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello, how can you help me?"}'
+```
 
-2. **Frontend not connecting:**
-   - Ensure backend is running on localhost:5000
-   - Check browser console for CORS errors
-   - Verify API endpoints are accessible
+## 🔍 Monitoring & Debugging
 
-3. **Docker issues:**
-   - Check Docker is running
-   - Verify ports are not in use
-   - Check Docker logs for errors
+### **Health Checks**
+All services include health checks:
+- **Backend**: `http://localhost:5000/api/health`
+- **Frontend**: `http://localhost:3000`
+- **Database**: Automatic PostgreSQL health check
 
-## 📈 Performance
+### **Logs**
+```bash
+# View all logs
+docker-compose logs -f
 
-- **Backend**: Fast response times with pandas data processing
-- **Frontend**: Smooth animations and real-time updates
-- **Data**: Efficient CSV loading and query processing
+# View specific service logs
+docker-compose logs -f backend
+docker-compose logs -f frontend
+```
+
+### **Database Access**
+```bash
+# Connect to database
+docker-compose exec postgres psql -U postgres -d conversational_ai
+
+# View tables
+\dt
+
+# Query data
+SELECT * FROM conversations LIMIT 5;
+```
+
+## 🚀 Deployment
+
+### **Production Deployment**
+```bash
+# Set production environment variables
+export NODE_ENV=production
+export FLASK_ENV=production
+
+# Build and deploy
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+### **Environment Variables**
+```bash
+# Required for production
+GROQ_API_KEY=your_production_groq_api_key
+SECRET_KEY=your_production_secret_key
+DATABASE_URL=your_production_database_url
+```
+
+## 🛠️ Troubleshooting
+
+### **Common Issues**
+
+#### **Backend Connection Issues**
+```bash
+# Check if backend is running
+docker-compose ps
+
+# Check backend logs
+docker-compose logs backend
+
+# Restart backend service
+docker-compose restart backend
+```
+
+#### **Database Connection Issues**
+```bash
+# Check database status
+docker-compose exec postgres pg_isready -U postgres
+
+# Reset database
+docker-compose down -v
+docker-compose up postgres
+```
+
+#### **Frontend Build Issues**
+```bash
+# Clear node modules and rebuild
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
+npm run build
+```
+
+### **Performance Optimization**
+```bash
+# Monitor resource usage
+docker stats
+
+# Optimize images
+docker-compose build --no-cache
+
+# Scale services
+docker-compose up --scale backend=2 --scale frontend=2
+```
+
+## 📊 Performance Metrics
+
+### **Resource Requirements**
+- **Minimum**: 2GB RAM, 1 CPU core
+- **Recommended**: 4GB RAM, 2 CPU cores
+- **Production**: 8GB RAM, 4 CPU cores
+
+### **Response Times**
+- **API Health Check**: < 100ms
+- **Chat Response**: < 2s (with LLM)
+- **Database Queries**: < 500ms
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Test thoroughly
+4. Add tests
 5. Submit a pull request
 
 ## 📄 License
 
-This project is created for educational and demonstration purposes.
+This project is part of the Conversational AI demonstration.
 
-## 🎉 Milestones Completed
+## 🆘 Support
 
-- ✅ **Milestone 1**: Environment Setup
-- ✅ **Milestone 2**: Dataset Setup
-- ✅ **Milestone 3**: Backend Service
-- ✅ **Milestone 4**: Frontend UI
-- ✅ **Milestone 5**: Integration & Containerization
+For issues and questions:
+- Check the troubleshooting section
+- Review the logs
+- Create an issue on GitHub
 
 ---
 
-**Repository**: https://github.com/varuntd1234/Think41ass 
+**Repository**: https://github.com/varuntd1234/Think41ass
+
+**Status**: ✅ All milestones completed and ready for deployment 
