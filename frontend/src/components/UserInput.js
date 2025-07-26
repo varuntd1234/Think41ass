@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React from 'react';
 import './UserInput.css';
+import { useChat } from '../context/ChatContext';
 
-const UserInput = ({ value, onChange, onSend, loading }) => {
-  const [inputValue, setInputValue] = useState('');
+const UserInput = ({ onSend, loading }) => {
+  const { state, actions } = useChat();
+  const { userInput } = state;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (inputValue.trim() && !loading) {
-      onSend(inputValue);
-      setInputValue('');
+    if (userInput.trim() && !loading) {
+      onSend(userInput);
+      actions.setUserInput('');
     }
   };
 
@@ -25,8 +27,8 @@ const UserInput = ({ value, onChange, onSend, loading }) => {
         <div className="input-wrapper">
           <textarea
             className="message-input"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            value={userInput}
+            onChange={(e) => actions.setUserInput(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Type your message here..."
             disabled={loading}
@@ -35,7 +37,7 @@ const UserInput = ({ value, onChange, onSend, loading }) => {
           <button 
             type="submit" 
             className="send-button"
-            disabled={!inputValue.trim() || loading}
+            disabled={!userInput.trim() || loading}
           >
             {loading ? '⏳' : '📤'}
           </button>

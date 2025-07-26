@@ -1,27 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import './ChatWindow.css';
 import MessageList from './MessageList';
 import UserInput from './UserInput';
 import ConversationHistoryPanel from './ConversationHistoryPanel';
+import { useChat } from '../context/ChatContext';
 
 const ChatWindow = () => {
-  const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [userInput, setUserInput] = useState('');
-  const [conversationId, setConversationId] = useState(null);
-  const [conversations, setConversations] = useState([]);
-  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  const { state, actions } = useChat();
+  const { 
+    messages, 
+    loading, 
+    userInput, 
+    conversationId, 
+    conversations, 
+    showHistoryPanel 
+  } = state;
 
   // Initialize with welcome message
   useEffect(() => {
-    setMessages([
-      {
-        id: 'welcome',
-        role: 'assistant',
-        content: 'Hello! I\'m your AI assistant. I can help you with:\n\n• Product information and top sellers\n• Order status tracking\n• Inventory and stock levels\n• General e-commerce questions\n\nHow can I help you today?',
-        timestamp: new Date().toISOString()
-      }
-    ]);
+    if (messages.length === 0) {
+      actions.resetState();
+    }
   }, []);
 
   const handleSendMessage = async (message) => {
@@ -35,9 +34,9 @@ const ChatWindow = () => {
       timestamp: new Date().toISOString()
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setUserInput('');
-    setLoading(true);
+    actions.addMessage(userMessage);
+    actions.setUserInput('');
+    actions.setLoading(true);
 
     try {
       const response = await fetch('/api/chat', {
@@ -62,11 +61,11 @@ const ChatWindow = () => {
           timestamp: data.timestamp
         };
 
-        setMessages(prev => [...prev, aiMessage]);
+        actions.addMessage(aiMessage);
         
         // Update conversation ID if this is a new conversation
         if (!conversationId && data.conversation_id) {
-          setConversationId(data.conversation_id);
+          actions.setConversationId(data.conversation_id);
         }
       } else {
         // Handle error
@@ -76,7 +75,7 @@ const ChatWindow = () => {
           content: 'Sorry, I encountered an error. Please try again.',
           timestamp: new Date().toISOString()
         };
-        setMessages(prev => [...prev, errorMessage]);
+        actions.addMessage(errorMessage);
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -86,9 +85,9 @@ const ChatWindow = () => {
         content: 'Sorry, I encountered an error. Please try again.',
         timestamp: new Date().toISOString()
       };
-      setMessages(prev => [...prev, errorMessage]);
+      actions.addMessage(errorMessage);
     } finally {
-      setLoading(false);
+      actions.setLoading(false);
     }
   };
 
@@ -98,9 +97,9 @@ const ChatWindow = () => {
       const data = await response.json();
 
       if (response.ok) {
-        setMessages(data.messages);
-        setConversationId(conversationId);
-        setShowHistoryPanel(false);
+        actions.setMessages(data.messages);
+        actions.setConversationId(conversationId);
+        actions.setHistoryPanel(false);
       }
     } catch (error) {
       console.error('Error loading conversation:', error);
@@ -108,16 +107,9 @@ const ChatWindow = () => {
   };
 
   const handleNewConversation = () => {
-    setMessages([
-      {
-        id: 'welcome',
-        role: 'assistant',
-        content: 'Hello! I\'m your AI assistant. How can I help you today?',
-        timestamp: new Date().toISOString()
-      }
-    ]);
-    setConversationId(null);
-    setShowHistoryPanel(false);
+    actions.resetState();
+    actions.setConversationId(null);
+    actions.setHistoryPanel(false);
   };
 
   return (
@@ -131,7 +123,7 @@ const ChatWindow = () => {
           <div className="header-actions">
             <button 
               className="history-toggle"
-              onClick={() => setShowHistoryPanel(!showHistoryPanel)}
+              onClick={() => actions.setHistoryPanel(!showHistoryPanel)}
             >
               📚 History
             </button>
@@ -150,7 +142,7 @@ const ChatWindow = () => {
           isVisible={showHistoryPanel}
           conversations={conversations}
           onLoadConversation={handleLoadConversation}
-          onClose={() => setShowHistoryPanel(false)}
+          onClose={() => actions.setHistoryPanel(false)}
         />
         
         <div className="chat-main">
@@ -160,7 +152,7 @@ const ChatWindow = () => {
           />
           <UserInput 
             value={userInput}
-            onChange={setUserInput}
+            onChange={actions.setUserInput}
             onSend={handleSendMessage}
             loading={loading}
           />
