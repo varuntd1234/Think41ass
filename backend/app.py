@@ -1,264 +1,223 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pandas as pd
-import os
-import json
+from models import db, User, Conversation, Message, Product, Order, OrderItem, InventoryItem, UserData, DistributionCenter
+from config import Config
+import uuid
 from datetime import datetime
 
-app = Flask(__name__)
-CORS(app)
-
-# Load datasets
-def load_datasets():
-    """Load all CSV datasets into memory"""
-    dataset_path = "../ecommerce-dataset/archive"
+def create_app():
+    app = Flask(__name__)
+    app.config.from_object(Config)
     
-    try:
-        products_df = pd.read_csv(f"{dataset_path}/products.csv")
-        orders_df = pd.read_csv(f"{dataset_path}/orders.csv")
-        order_items_df = pd.read_csv(f"{dataset_path}/order_items.csv")
-        inventory_items_df = pd.read_csv(f"{dataset_path}/inventory_items.csv")
-        users_df = pd.read_csv(f"{dataset_path}/users.csv")
-        distribution_centers_df = pd.read_csv(f"{dataset_path}/distribution_centers.csv")
-        
-        return {
-            'products': products_df,
-            'orders': orders_df,
-            'order_items': order_items_df,
-            'inventory_items': inventory_items_df,
-            'users': users_df,
-            'distribution_centers': distribution_centers_df
-        }
-    except Exception as e:
-        print(f"Error loading datasets: {e}")
-        return None
+    # Initialize extensions
+    db.init_app(app)
+    CORS(app)
+    
+    return app
 
-# Load datasets on startup
-datasets = load_datasets()
+app = create_app()
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
+    try:
+        # Test database connection
+        db.session.execute('SELECT 1')
+        db_status = 'connected'
+    except Exception as e:
+        db_status = f'error: {str(e)}'
+    
     return jsonify({
         'status': 'healthy',
-        'message': 'Customer Support Chatbot API is running',
-        'datasets_loaded': datasets is not None
+        'message': 'Conversational AI Backend Service is running',
+        'database': db_status,
+        'timestamp': datetime.utcnow().isoformat()
     })
 
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    """Main chatbot endpoint"""
+@app.route('/api/users', methods=['POST'])
+def create_user():
+    """Create a new user"""
     try:
         data = request.get_json()
-        user_message = data.get('message', '').lower()
         
-        if not datasets:
-            return jsonify({
-                'error': 'Datasets not loaded',
-                'message': 'Please check if the dataset files are available'
-            }), 500
+        # Validate required fields
+        if not data or 'email' not in data:
+            return jsonify({'error': 'Email is required'}), 400
         
-        # Process the user message and generate response
-        response = process_message(user_message)
+        # Check if user already exists
+        existing_user = User.query.filter_by(email=data['email']).first()
+        if existing_user:
+            return jsonify({'error': 'User with this email already exists'}), 409
+        
+        # Create new user
+        user = User(
+            email=data['email'],
+            first_name=data.get('first_name'),
+            last_name=data.get('last_name')
+        )
+        
+        db.session.add(user)
+        db.session.commit()
         
         return jsonify({
-            'message': response,
-            'timestamp': datetime.now().isoformat()
+            'message': 'User created successfully',
+            'user_id': user.id,
+            'email': user.email
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/conversations', methods=['POST'])
+def create_conversation():
+    """Create a new conversation for a user"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'user_id' not in data:
+            return jsonify({'error': 'user_id is required'}), 400
+        
+        # Verify user exists
+        user = User.query.get(data['user_id'])
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Create new conversation
+        conversation = Conversation(
+            user_id=data['user_id'],
+            title=data.get('title', 'New Conversation')
+        )
+        
+        db.session.add(conversation)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Conversation created successfully',
+            'conversation_id': conversation.id,
+            'title': conversation.title
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/conversations/<conversation_id>', methods=['GET'])
+def get_conversation(conversation_id):
+    """Get conversation with all messages"""
+    try:
+        conversation = Conversation.query.get(conversation_id)
+        if not conversation:
+            return jsonify({'error': 'Conversation not found'}), 404
+        
+        messages = []
+        for message in conversation.messages:
+            messages.append({
+                'id': message.id,
+                'role': message.role,
+                'content': message.content,
+                'created_at': message.created_at.isoformat()
+            })
+        
+        return jsonify({
+            'conversation_id': conversation.id,
+            'title': conversation.title,
+            'created_at': conversation.created_at.isoformat(),
+            'messages': messages
         })
         
     except Exception as e:
-        return jsonify({
-            'error': str(e),
-            'message': 'An error occurred while processing your request'
-        }), 500
+        return jsonify({'error': str(e)}), 500
 
-def process_message(message):
-    """Process user message and return appropriate response"""
-    
-    # Check for top products query
-    if 'top' in message and ('product' in message or 'sold' in message):
-        return get_top_products(message)
-    
-    # Check for order status query
-    elif 'order' in message and ('status' in message or 'id' in message):
-        return get_order_status(message)
-    
-    # Check for inventory/stock query
-    elif any(word in message for word in ['stock', 'inventory', 'left', 'available']):
-        return get_inventory_status(message)
-    
-    # Check for product information
-    elif 'product' in message or 'item' in message:
-        return get_product_info(message)
-    
-    # Default response
-    else:
-        return get_help_message()
-
-def get_top_products(message):
-    """Get top selling products"""
+@app.route('/api/conversations/<conversation_id>/messages', methods=['POST'])
+def add_message(conversation_id):
+    """Add a message to a conversation"""
     try:
-        # Count products sold by merging order_items with products
-        sold_products = datasets['order_items'].merge(
-            datasets['products'], 
-            left_on='product_id', 
-            right_on='id', 
-            how='inner'
+        data = request.get_json()
+        
+        if not data or 'role' not in data or 'content' not in data:
+            return jsonify({'error': 'role and content are required'}), 400
+        
+        # Verify conversation exists
+        conversation = Conversation.query.get(conversation_id)
+        if not conversation:
+            return jsonify({'error': 'Conversation not found'}), 404
+        
+        # Create new message
+        message = Message(
+            conversation_id=conversation_id,
+            role=data['role'],
+            content=data['content']
         )
         
-        # Count sales by product
-        product_sales = sold_products.groupby(['name', 'brand', 'category']).size().reset_index(name='sales_count')
-        product_sales = product_sales.sort_values('sales_count', ascending=False)
+        db.session.add(message)
+        db.session.commit()
         
-        # Get top 5
-        top_5 = product_sales.head(5)
-        
-        response = "Here are the top 5 most sold products:\n\n"
-        for idx, row in top_5.iterrows():
-            response += f"{idx + 1}. {row['name']} ({row['brand']}) - {row['category']} - {row['sales_count']} units sold\n"
-        
-        return response
+        return jsonify({
+            'message': 'Message added successfully',
+            'message_id': message.id,
+            'role': message.role,
+            'content': message.content,
+            'created_at': message.created_at.isoformat()
+        }), 201
         
     except Exception as e:
-        return f"Sorry, I couldn't retrieve the top products information. Error: {str(e)}"
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
-def get_order_status(message):
-    """Get order status by order ID"""
+@app.route('/api/users/<user_id>/conversations', methods=['GET'])
+def get_user_conversations(user_id):
+    """Get all conversations for a user"""
     try:
-        # Extract order ID from message
-        import re
-        order_id_match = re.search(r'(\d+)', message)
+        # Verify user exists
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
         
-        if not order_id_match:
-            return "Please provide an order ID. For example: 'Show me the status of order ID 12345'"
+        conversations = []
+        for conv in user.conversations:
+            conversations.append({
+                'id': conv.id,
+                'title': conv.title,
+                'created_at': conv.created_at.isoformat(),
+                'updated_at': conv.updated_at.isoformat(),
+                'message_count': len(conv.messages)
+            })
         
-        order_id = int(order_id_match.group(1))
-        
-        # Find the order
-        order = datasets['orders'][datasets['orders']['order_id'] == order_id]
-        
-        if order.empty:
-            return f"Order ID {order_id} not found. Please check the order ID and try again."
-        
-        order_info = order.iloc[0]
-        
-        # Get order items
-        order_items = datasets['order_items'][datasets['order_items']['order_id'] == order_id]
-        
-        response = f"Order ID: {order_id}\n"
-        response += f"Status: {order_info['status']}\n"
-        response += f"Created: {order_info['created_at']}\n"
-        response += f"Number of items: {order_info['num_of_item']}\n"
-        
-        if pd.notna(order_info['shipped_at']):
-            response += f"Shipped: {order_info['shipped_at']}\n"
-        if pd.notna(order_info['delivered_at']):
-            response += f"Delivered: {order_info['delivered_at']}\n"
-        if pd.notna(order_info['returned_at']):
-            response += f"Returned: {order_info['returned_at']}\n"
-        
-        return response
+        return jsonify({
+            'user_id': user_id,
+            'conversations': conversations
+        })
         
     except Exception as e:
-        return f"Sorry, I couldn't retrieve the order status. Error: {str(e)}"
+        return jsonify({'error': str(e)}), 500
 
-def get_inventory_status(message):
-    """Get inventory status for products"""
+# Database statistics endpoints for testing
+@app.route('/api/stats', methods=['GET'])
+def get_database_stats():
+    """Get database statistics"""
     try:
-        # Extract product name from message
-        import re
+        stats = {
+            'users': User.query.count(),
+            'conversations': Conversation.query.count(),
+            'messages': Message.query.count(),
+            'products': Product.query.count(),
+            'orders': Order.query.count(),
+            'order_items': OrderItem.query.count(),
+            'inventory_items': InventoryItem.query.count(),
+            'user_data': UserData.query.count(),
+            'distribution_centers': DistributionCenter.query.count()
+        }
         
-        # Look for product names in the message
-        product_name = None
-        
-        # Check for specific product mentions
-        if 'classic t-shirt' in message or 'classic tshirt' in message:
-            product_name = 'Classic T-Shirt'
-        elif 't-shirt' in message or 'tshirt' in message:
-            product_name = 'T-Shirt'
-        else:
-            # Try to extract any product name
-            words = message.split()
-            for word in words:
-                if len(word) > 3:  # Skip short words
-                    matching_products = datasets['products'][
-                        datasets['products']['name'].str.contains(word, case=False, na=False)
-                    ]
-                    if not matching_products.empty:
-                        product_name = matching_products.iloc[0]['name']
-                        break
-        
-        if not product_name:
-            return "Please specify which product you'd like to check inventory for. For example: 'How many Classic T-Shirts are left in stock?'"
-        
-        # Get inventory for the product
-        product = datasets['products'][datasets['products']['name'] == product_name]
-        
-        if product.empty:
-            return f"Product '{product_name}' not found in our inventory."
-        
-        product_id = product.iloc[0]['id']
-        
-        # Count available inventory (not sold)
-        available_inventory = datasets['inventory_items'][
-            (datasets['inventory_items']['product_id'] == product_id) & 
-            (datasets['inventory_items']['sold_at'].isna())
-        ]
-        
-        total_inventory = datasets['inventory_items'][
-            datasets['inventory_items']['product_id'] == product_id
-        ]
-        
-        available_count = len(available_inventory)
-        total_count = len(total_inventory)
-        
-        response = f"Inventory Status for {product_name}:\n"
-        response += f"Available in stock: {available_count} units\n"
-        response += f"Total inventory: {total_count} units\n"
-        response += f"Sold: {total_count - available_count} units"
-        
-        return response
+        return jsonify(stats)
         
     except Exception as e:
-        return f"Sorry, I couldn't retrieve the inventory information. Error: {str(e)}"
-
-def get_product_info(message):
-    """Get general product information"""
-    try:
-        # Count total products
-        total_products = len(datasets['products'])
-        
-        # Get product categories
-        categories = datasets['products']['category'].value_counts()
-        
-        # Get brands
-        brands = datasets['products']['brand'].value_counts()
-        
-        response = f"Product Information:\n\n"
-        response += f"Total products: {total_products}\n\n"
-        response += f"Product Categories:\n"
-        for category, count in categories.head(5).items():
-            response += f"- {category}: {count} products\n"
-        
-        response += f"\nTop Brands:\n"
-        for brand, count in brands.head(5).items():
-            response += f"- {brand}: {count} products\n"
-        
-        return response
-        
-    except Exception as e:
-        return f"Sorry, I couldn't retrieve the product information. Error: {str(e)}"
-
-def get_help_message():
-    """Return help message with available queries"""
-    return """I'm your customer support chatbot! I can help you with:
-
-1. **Top Products**: "What are the top 5 most sold products?"
-2. **Order Status**: "Show me the status of order ID 12345"
-3. **Inventory**: "How many Classic T-Shirts are left in stock?"
-4. **Product Info**: "Tell me about your products"
-
-Please ask me any of these questions or something similar!"""
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
+    with app.app_context():
+        # Create all tables
+        db.create_all()
+        print("Database tables created successfully!")
+    
     app.run(debug=True, host='0.0.0.0', port=5000) 
