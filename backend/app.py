@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from models import db, User, Conversation, Message, Product, Order, OrderItem, InventoryItem, UserData, DistributionCenter
 from config import Config
+from chat_service import ChatService
 import uuid
 from datetime import datetime
 
@@ -33,6 +34,35 @@ def health_check():
         'database': db_status,
         'timestamp': datetime.utcnow().isoformat()
     })
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """Primary chat endpoint - accepts user message and optional conversation_id"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'message' not in data:
+            return jsonify({'error': 'message is required'}), 400
+        
+        user_message = data['message']
+        conversation_id = data.get('conversation_id')
+        user_id = data.get('user_id')
+        
+        # Process the chat message
+        result = ChatService.process_chat_message(
+            user_message=user_message,
+            conversation_id=conversation_id,
+            user_id=user_id
+        )
+        
+        # Check if result is an error tuple
+        if isinstance(result, tuple) and len(result) == 2 and 'error' in result[0]:
+            return jsonify(result[0]), result[1]
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/users', methods=['POST'])
 def create_user():
